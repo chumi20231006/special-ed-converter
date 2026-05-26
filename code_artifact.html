@@ -1,0 +1,646 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>特教課程計畫轉換神器</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.4.21/mammoth.browser.min.js"></script>
+    <style>
+        /* 列印專屬設定 */
+        @media print {
+            body { background-color: white; }
+            .no-print { display: none !important; }
+            .print-area { width: 100%; margin: 0; padding: 0; overflow: visible; }
+            @page { size: A4 landscape; margin: 1.5cm; }
+            .doc-table { border-collapse: collapse; width: 100%; }
+            /* 強制設定黑色的實線框線，確保分隔線清晰可見 */
+            .doc-table th, .doc-table td { border: 1pt solid black !important; padding: 8px; }
+            [contenteditable]:focus { outline: none; }
+            /* 強制每一張表單印在不同頁面 */
+            .page-container { page-break-after: always; box-shadow: none !important; margin: 0 !important; width: 100% !important; min-height: 0 !important; padding: 0 !important; }
+            .page-container:last-child { page-break-after: auto; }
+        }
+        
+        /* 網頁版表格預覽樣式 */
+        .doc-table { border-collapse: collapse; width: 100%; color: black; }
+        /* 確保網頁預覽時也有深黑色的分隔線 */
+        .doc-table th, .doc-table td { border: 1px solid black; padding: 0.5rem; text-align: left; vertical-align: top; }
+        .doc-table th { background-color: #f3f4f6; font-weight: bold; text-align: center; }
+        [contenteditable="true"]:hover { background-color: #fef08a; transition: background-color 0.2s; cursor: text; }
+        .check-box { font-family: monospace; font-size: 1.1rem; }
+    </style>
+</head>
+<body class="bg-gray-100 font-sans h-screen flex flex-col overflow-hidden">
+
+    <header class="bg-indigo-600 text-white p-4 shadow-md flex justify-between items-center no-print flex-shrink-0">
+        <div class="flex items-center gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+            </svg>
+            <h1 class="text-xl font-bold">115學年度 特教課程計畫轉換神器</h1>
+        </div>
+        
+        <div class="flex gap-2">
+            <button onclick="exportToWord()" class="bg-indigo-500 hover:bg-indigo-400 text-white px-3 py-2 rounded-lg font-bold shadow transition flex items-center gap-2 text-sm border border-indigo-400">
+                💾 下載 Word 檔
+            </button>
+            <button onclick="printInNewWindow()" class="bg-white text-indigo-600 px-3 py-2 rounded-lg font-bold shadow hover:bg-indigo-50 transition flex items-center gap-2 text-sm ml-2">
+                🖨️ 列印 / PDF
+            </button>
+        </div>
+    </header>
+
+    <main class="flex-1 flex overflow-hidden">
+        
+        <aside class="w-1/3 bg-white border-r p-4 flex flex-col gap-4 overflow-y-auto no-print">
+            <div class="bg-blue-50 border-l-4 border-blue-500 p-3 text-sm text-blue-700">
+                <p class="font-bold">✨ 突破 Sandbox 封鎖版</p>
+                <p>列印按鈕已升級為「同頁面獨立輸出模式」，徹底解決預覽畫面被阻擋彈出視窗的問題！</p>
+            </div>
+
+            <div class="flex flex-col gap-1 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                <label class="font-bold text-amber-800 text-sm">步驟 1：請選擇要輸出的表單類型</label>
+                <select id="formType" onchange="switchFormTemplate()" class="w-full border border-amber-300 rounded-lg p-2 focus:ring-2 focus:ring-amber-500 bg-white font-medium text-amber-900">
+                    <option value="5-1-1">📄 表 5-1-1 (部定領域：國語、數學等)</option>
+                    <option value="5-2-1">🤝 表 5-2-1 (特殊需求領域：生管、社技等)</option>
+                </select>
+            </div>
+
+            <div class="flex flex-col gap-1 p-3 bg-indigo-50 border border-indigo-200 rounded-lg">
+                <label class="font-bold text-indigo-800 text-sm">步驟 2：請選擇 AI 解析模式</label>
+                <select id="parseMode" class="w-full border border-indigo-300 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 bg-white font-medium text-indigo-900">
+                    <option value="math">📐 數學 / 一般通用 (依賴領綱代碼)</option>
+                    <option value="mandarin">📖 國語文模式 (純文字與多單元合併擷取)</option>
+                    <option value="special">🤝 特殊需求領域 (純文字目標擷取)</option>
+                </select>
+            </div>
+
+            <div class="flex flex-col gap-2 p-3 bg-gray-50 border border-dashed border-gray-400 rounded-lg">
+                <label class="font-bold text-gray-700">步驟 3：上傳舊版 Word 檔案 (.docx)</label>
+                <input type="file" id="wordFile" accept=".docx" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-indigo-100 file:text-indigo-700 hover:file:bg-indigo-200 cursor-pointer">
+                <textarea id="rawInput" class="w-full h-16 border border-gray-300 rounded-lg p-2 mt-2 text-sm resize-none" placeholder="如果上傳失敗，也可直接在此貼上文字..."></textarea>
+            </div>
+
+            <button id="convertBtn" onclick="parseWithAI()" class="w-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white py-3 rounded-lg font-bold hover:from-indigo-700 hover:to-purple-700 transition shadow-lg text-lg flex justify-center items-center gap-2">
+                ✨ 啟動 AI 智慧拆解與精準排版
+            </button>
+        </aside>
+
+        <section class="w-2/3 bg-gray-300 p-8 overflow-y-auto flex flex-col items-center gap-8 print-area" id="formsContainer">
+        </section>
+    </main>
+
+    <div id="toast" class="fixed bottom-5 right-5 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg transform transition-transform duration-300 translate-y-20 opacity-0 no-print z-50">
+        狀態更新成功！
+    </div>
+
+    <template id="pageTemplate">
+        <div class="page-container bg-white shadow-xl w-[29.7cm] min-h-[21cm] p-[1.5cm] flex flex-col relative">
+            
+            <div class="no-print absolute top-2 left-2 text-xs bg-indigo-100 text-indigo-800 px-2 py-1 rounded font-bold page-badge">
+                表單頁面
+            </div>
+
+            <div class="text-center mb-4 font-bold text-lg leading-relaxed">
+                <span class="displayFormNum">表5-1-1</span><br>
+                115學年度臺中市 <span class="docSchool border-b border-dashed border-gray-400 min-w-[3rem] inline-block" contenteditable="true">____</span> 區 <span class="docSchoolName border-b border-dashed border-gray-400 min-w-[4rem] inline-block" contenteditable="true">____</span> 國民小學第 <span class="docSemester border-b border-dashed border-gray-400 min-w-[2rem] inline-block" contenteditable="true">一</span> 學期特殊教育(身心障礙類)<br>
+                <span class="displayFormTitle">部定領域/科目課程計畫</span>
+            </div>
+
+            <table class="doc-table text-sm">
+                <tbody>
+                    <tr class="row-511-1">
+                        <th class="w-[12%]">領域/科目名稱</th>
+                        <td class="w-[21%] docSubject_511" contenteditable="true"></td>
+                        <th class="w-[12%]">適用年級</th>
+                        <td class="w-[38%]" contenteditable="true">
+                            <span class="cursor-pointer check-box select-none font-bold text-blue-600">□</span>1年級
+                            <span class="cursor-pointer check-box select-none font-bold text-blue-600 ml-1">□</span>2年級
+                            <span class="cursor-pointer check-box select-none font-bold text-blue-600 ml-1">□</span>3年級
+                            <span class="cursor-pointer check-box select-none font-bold text-blue-600 ml-1">□</span>4年級
+                            <span class="cursor-pointer check-box select-none font-bold text-blue-600 ml-1">□</span>5年級
+                            <span class="cursor-pointer check-box select-none font-bold text-blue-600 ml-1">□</span>6年級
+                        </td>
+                        <th class="w-[8%]">節數</th>
+                        <td class="w-[9%]" contenteditable="true">每週   節</td>
+                    </tr>
+
+                    <tr class="row-521-1 hidden bg-yellow-50">
+                        <th class="w-[12%]">科目名稱</th>
+                        <td class="w-[38%] docSubject_521" colspan="3" contenteditable="true"></td>
+                        <th class="w-[12%]">開設組數</th>
+                        <td class="w-[38%]" colspan="2" contenteditable="true">( &nbsp; &nbsp; &nbsp; ) 組</td>
+                    </tr>
+                    <tr class="row-521-2 hidden bg-yellow-50">
+                        <th>適用年級</th>
+                        <td colspan="3" contenteditable="true">
+                            <span class="cursor-pointer check-box select-none font-bold text-blue-600">□</span>1年級
+                            <span class="cursor-pointer check-box select-none font-bold text-blue-600 ml-1">□</span>2年級
+                            <span class="cursor-pointer check-box select-none font-bold text-blue-600 ml-1">□</span>3年級
+                            <span class="cursor-pointer check-box select-none font-bold text-blue-600 ml-1">□</span>4年級
+                            <span class="cursor-pointer check-box select-none font-bold text-blue-600 ml-1">□</span>5年級
+                            <span class="cursor-pointer check-box select-none font-bold text-blue-600 ml-1">□</span>6年級<br>
+                            <span class="cursor-pointer check-box select-none font-bold text-blue-600">□</span>跨年級（ &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; ）
+                        </td>
+                        <th>節數</th>
+                        <td colspan="2" contenteditable="true">每週   節</td>
+                    </tr>
+
+                    <tr class="row-integration">
+                        <th>特殊需求<br>領域融入</th>
+                        <td colspan="5" contenteditable="true">
+                            <div class="mb-1 flex flex-wrap gap-x-4 gap-y-1">
+                                <label><span class="cursor-pointer check-box select-none font-bold text-blue-600">□</span>生活管理</label>
+                                <label><span class="cursor-pointer check-box select-none font-bold text-blue-600">□</span>社會技巧</label>
+                                <label><span class="cursor-pointer check-box select-none font-bold text-blue-600">□</span>學習策略</label>
+                                <label><span class="cursor-pointer check-box select-none font-bold text-blue-600">□</span>職業教育</label>
+                                <label><span class="cursor-pointer check-box select-none font-bold text-blue-600">□</span>溝通訓練</label>
+                                <label><span class="cursor-pointer check-box select-none font-bold text-blue-600">□</span>點字</label>
+                                <label><span class="cursor-pointer check-box select-none font-bold text-blue-600">□</span>定向行動</label>
+                                <label><span class="cursor-pointer check-box select-none font-bold text-blue-600">□</span>功能性動作訓練</label>
+                                <label><span class="cursor-pointer check-box select-none font-bold text-blue-600">□</span>輔助科技應用</label>
+                            </div>
+                            <div class="text-gray-600 text-[13px] mt-1">※如勾選融入特需領域科目，下方學習重點需有相對應之學習表現/學習內容。</div>
+                        </td>
+                    </tr>
+
+                    <tr>
+                        <th rowspan="2" class="align-middle">學習重點</th>
+                        <th class="bg-white">學習表現</th>
+                        <td colspan="4" contenteditable="true" class="docPerf whitespace-pre-wrap min-h-[60px] align-top">(請上傳或貼上內容)</td>
+                    </tr>
+                    <tr>
+                        <th class="bg-white">學習內容</th>
+                        <td colspan="4" contenteditable="true" class="docCont whitespace-pre-wrap min-h-[60px] align-top"></td>
+                    </tr>
+                    <tr>
+                        <th class="text-center w-[12%]">週次</th>
+                        <th colspan="2" class="text-center w-[33%]">單元／主題名稱</th>
+                        <th colspan="3" class="text-center w-[55%]">單元／主題內容或教學重點</th>
+                    </tr>
+                </tbody>
+                <tbody class="unitRows">
+                </tbody>
+                <tbody>
+                    <tr>
+                        <th class="text-center">備註</th>
+                        <td colspan="5" contenteditable="true" class="docMemo">說明：每學期每領域科目之課程必須包含至少4個單元。</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <div class="no-print mt-4 text-center">
+                <button type="button" onclick="addUnitRow(this)" class="text-indigo-600 hover:text-indigo-800 font-bold text-sm border border-indigo-300 px-3 py-1 rounded bg-indigo-50 hover:bg-indigo-100 transition">
+                    + 在此頁面底部新增一列進度
+                </button>
+            </div>
+        </div>
+    </template>
+
+    <script>
+        const apiKey = ""; // 系統會在背景動態帶入金鑰，無需手動填寫
+
+        function attachCheckboxes() {
+            document.querySelectorAll('.check-box').forEach(function(box) {
+                if(box.dataset.bound) return;
+                box.dataset.bound = "true";
+                box.onclick = function(e) {
+                    e.preventDefault();
+                    this.innerText = this.innerText === '□' ? '☑' : '□';
+                    this.classList.toggle('text-blue-600');
+                    this.classList.toggle('text-black');
+                };
+            });
+        }
+
+        window.onload = function() {
+            renderEmptyPage();
+        };
+
+        function renderEmptyPage() {
+            const container = document.getElementById('formsContainer');
+            container.innerHTML = '';
+            const clone = document.getElementById('pageTemplate').content.cloneNode(true);
+            const tbody = clone.querySelector('.unitRows');
+            for(let i=0; i<2; i++) {
+                const tr = document.createElement('tr');
+                tr.innerHTML = '<td class="text-center align-middle" contenteditable="true"></td><td colspan="2" class="align-top font-bold" contenteditable="true"></td><td colspan="3" class="align-top whitespace-pre-wrap" contenteditable="true"></td>';
+                tbody.appendChild(tr);
+            }
+            container.appendChild(clone);
+            attachCheckboxes();
+            switchFormTemplate();
+        }
+
+        function switchFormTemplate() {
+            const formType = document.getElementById('formType').value;
+            const parseMode = document.getElementById('parseMode');
+
+            document.querySelectorAll('.page-container').forEach(function(page) {
+                const row511_1 = page.querySelector('.row-511-1');
+                const row521_1 = page.querySelector('.row-521-1');
+                const row521_2 = page.querySelector('.row-521-2');
+                const rowIntegration = page.querySelector('.row-integration');
+                const titleNum = page.querySelector('.displayFormNum');
+                const titleName = page.querySelector('.displayFormTitle');
+                const memo = page.querySelector('.docMemo');
+
+                if (formType === '5-2-1') {
+                    row511_1.classList.add('hidden');
+                    row521_1.classList.remove('hidden');
+                    row521_2.classList.remove('hidden');
+                    rowIntegration.classList.add('hidden'); 
+                    titleNum.innerText = "表5-2-1";
+                    titleName.innerText = "特殊需求領域課程計畫";
+                    memo.innerText = "說明：特需領域課程之規劃應對應領綱之學習表現或學習內容，可依學生狀況彈性選擇階段別，也可拆解或合併階段內的條目進行調整，無須拘泥階段順序，以符學生需求。";
+                    parseMode.value = "special";
+                } else {
+                    row511_1.classList.remove('hidden');
+                    row521_1.classList.add('hidden');
+                    row521_2.classList.add('hidden');
+                    rowIntegration.classList.remove('hidden'); 
+                    titleNum.innerText = "表5-1-1";
+                    titleName.innerText = "部定領域/科目課程計畫";
+                    memo.innerText = "說明：每學期每領域科目之課程必須包含至少4個單元，詳細請參考臺中市國民教育階段身心障礙分散式資源班/不分類巡迴輔導班排課補充說明。";
+                }
+            });
+        }
+
+        function addUnitRow(btnElement) {
+            const tbody = btnElement.closest('.page-container').querySelector('.unitRows');
+            const tr = document.createElement('tr');
+            tr.innerHTML = '<td class="text-center align-middle" contenteditable="true">新週次</td><td colspan="2" class="align-top font-bold" contenteditable="true">新單元</td><td colspan="3" class="align-top whitespace-pre-wrap text-left" contenteditable="true">請輸入教學重點</td>';
+            tbody.appendChild(tr);
+        }
+
+        function applyWordCompatibleStyles(container) {
+            container.querySelectorAll('table').forEach(function(table) {
+                table.setAttribute('width', '100%');
+                table.style.width = '100%';
+                table.style.borderCollapse = 'collapse';
+                table.style.marginBottom = '20px';
+                table.style.fontFamily = "'DFKai-SB', '標楷體', serif";
+            });
+
+            container.querySelectorAll('th, td').forEach(function(cell) {
+                cell.style.border = '1px solid black';
+                cell.style.padding = '8px';
+                
+                const widthMatch = cell.className.match(/w-\[(\d+)%\]/);
+                if (widthMatch) {
+                    cell.style.width = widthMatch[1] + '%';
+                    cell.setAttribute('width', widthMatch[1] + '%');
+                }
+
+                if (cell.classList.contains('text-center')) cell.style.textAlign = 'center';
+                if (cell.classList.contains('text-left')) cell.style.textAlign = 'left';
+                if (cell.classList.contains('align-middle')) cell.style.verticalAlign = 'middle';
+                if (cell.classList.contains('align-top')) cell.style.verticalAlign = 'top';
+                if (cell.classList.contains('font-bold')) cell.style.fontWeight = 'bold';
+                
+                if (cell.classList.contains('whitespace-pre-wrap')) {
+                    cell.innerHTML = cell.innerHTML.replace(/\n/g, '<br>');
+                }
+
+                if (cell.tagName.toLowerCase() === 'th') {
+                    cell.style.backgroundColor = '#f3f4f6';
+                    cell.style.fontWeight = 'bold';
+                    cell.style.textAlign = 'center';
+                    if (!cell.style.verticalAlign) cell.style.verticalAlign = 'middle';
+                }
+            });
+
+            container.querySelectorAll('.flex, .flex-wrap').forEach(function(el) {
+                el.style.display = 'block';
+                el.style.lineHeight = '1.8';
+            });
+            
+            container.querySelectorAll('label').forEach(function(label) {
+                label.style.display = 'inline-block';
+                label.style.marginRight = '15px';
+            });
+            
+            container.querySelectorAll('.check-box').forEach(function(cb) {
+                cb.style.fontFamily = "monospace, 'Courier New'";
+                cb.style.fontSize = '14pt';
+                cb.style.fontWeight = 'bold';
+            });
+
+            container.querySelectorAll('.text-center').forEach(function(el) {
+                el.style.textAlign = 'center';
+            });
+        }
+
+        // =====================================
+        // 💾 修改：Word 下載 (明確說明 Sandbox 限制)
+        // =====================================
+        function exportToWord() {
+            const container = document.getElementById('formsContainer').cloneNode(true);
+
+            container.querySelectorAll('.no-print').forEach(function(el) { el.remove(); });
+            container.querySelectorAll('.hidden').forEach(function(el) { el.remove(); });
+            container.querySelectorAll('[contenteditable]').forEach(function(el) { el.removeAttribute('contenteditable'); });
+
+            applyWordCompatibleStyles(container);
+
+            let htmlContent = '';
+            const pages = container.querySelectorAll('.page-container');
+            pages.forEach(function(page, index) {
+                htmlContent += page.innerHTML;
+                if (index < pages.length - 1) {
+                    htmlContent += "<br clear=all style='mso-special-character:line-break;page-break-before:always'>";
+                }
+            });
+
+            const headerArr = [
+                "<html xmlns:v='urn:schemas-microsoft-com:vml'",
+                "xmlns:o='urn:schemas-microsoft-com:office:office'",
+                "xmlns:w='urn:schemas-microsoft-com:office:word'",
+                "xmlns:m='http://schemas.microsoft.com/office/2004/12/omml'",
+                "xmlns='http://www.w3.org/TR/REC-html40'>",
+                "<head><meta charset='utf-8'><title>特教課程計畫</title>",
+                "<style>",
+                "@page WordSection1 { size: 841.9pt 595.3pt; mso-page-orientation: landscape; margin: 1.5cm 1.5cm 1.5cm 1.5cm; mso-header-margin: 35.4pt; mso-footer-margin: 35.4pt; mso-paper-source: 0; }",
+                "div.WordSection1 { page: WordSection1; }",
+                "body { font-family: 'DFKai-SB', '標楷體', serif, 'Times New Roman'; font-size: 11pt; }",
+                "</style></head><body><div class='WordSection1'>"
+            ];
+            
+            const header = headerArr.join(" ");
+            const footer = "</div></body></html>";
+            const sourceHTML = header + htmlContent + footer;
+
+            try {
+                const blob = new Blob(['\ufeff', sourceHTML], { type: 'application/msword' });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = '特教課程計畫_輸出.doc';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(url);
+                showToast('💾 已觸發下載！若沒反應代表「預覽畫面」阻擋，請存成本地 HTML 執行。');
+            } catch (err) {
+                showToast('⚠️ 下載被預覽環境阻擋，請將網頁另存至電腦執行！');
+            }
+        }
+
+        // =====================================
+        // 🖨️ 修改：列印按鈕 (突破 Sandbox 完美避開新視窗阻擋)
+        // =====================================
+        function printInNewWindow() {
+            // 隱藏原始主畫面，避免干擾
+            document.querySelector('header').style.display = 'none';
+            document.querySelector('main').style.display = 'none';
+            
+            // 建立新的列印專屬頁面 (Overlay 技術，直接覆蓋畫面，完全不需彈出新視窗)
+            const printView = document.createElement('div');
+            printView.id = 'tempPrintView';
+            printView.style.width = '100%';
+            printView.style.minHeight = '100vh';
+            printView.style.backgroundColor = '#e5e7eb';
+            printView.style.position = 'absolute';
+            printView.style.top = '0';
+            printView.style.left = '0';
+            printView.style.zIndex = '9999';
+            printView.style.overflowY = 'auto';
+            
+            // 獨立的控制面板
+            const controls = document.createElement('div');
+            controls.className = 'no-print';
+            controls.style.textAlign = 'center';
+            controls.style.padding = '20px';
+            controls.style.backgroundColor = '#ffffff';
+            controls.style.borderBottom = '2px solid #ccc';
+            controls.style.position = 'sticky';
+            controls.style.top = '0';
+            controls.style.zIndex = '10000';
+            controls.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.1)';
+            controls.innerHTML = 
+                '<p style="margin-bottom: 10px; color: #374151; font-weight: bold; font-size: 1.1rem;">📝 獨立列印預覽模式（已避開預覽區阻擋）</p>' +
+                '<button onclick="window.print()" style="padding: 10px 20px; font-size: 16px; font-weight: bold; background: #4f46e5; color: white; border: none; border-radius: 5px; cursor: pointer; margin-right: 15px;">🖨️ 確認列印 / PDF</button>' +
+                '<button onclick="closePrintView()" style="padding: 10px 20px; font-size: 16px; font-weight: bold; background: #6b7280; color: white; border: none; border-radius: 5px; cursor: pointer;">🔙 返回編輯器</button>';
+            
+            const printContentWrapper = document.createElement('div');
+            printContentWrapper.style.padding = '2rem 0';
+            
+            // 將右側表格內容完整拷貝過來
+            const printContent = document.createElement('div');
+            printContent.style.width = '100%';
+            printContent.style.maxWidth = '29.7cm';
+            printContent.style.margin = '0 auto';
+            printContent.innerHTML = document.getElementById('formsContainer').innerHTML;
+            
+            printContentWrapper.appendChild(printContent);
+            printView.appendChild(controls);
+            printView.appendChild(printContentWrapper);
+            document.body.appendChild(printView);
+        }
+
+        // 全域函數：用來關閉列印預覽並返回編輯器
+        window.closePrintView = function() {
+            const printView = document.getElementById('tempPrintView');
+            if (printView) {
+                document.body.removeChild(printView);
+            }
+            // 恢復原始主畫面
+            document.querySelector('header').style.display = 'flex';
+            document.querySelector('main').style.display = 'flex';
+        };
+
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            toast.innerText = msg;
+            toast.classList.remove('translate-y-20', 'opacity-0');
+            setTimeout(function() { toast.classList.add('translate-y-20', 'opacity-0'); }, 4000);
+        }
+
+        document.getElementById('wordFile').addEventListener('change', function(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                mammoth.extractRawText({arrayBuffer: e.target.result}).then(function(result) {
+                    document.getElementById('rawInput').value = result.value;
+                    parseWithAI(); 
+                }).catch(function(err) { showToast("⚠️ 讀取失敗，請確認是 .docx 檔案！"); });
+            };
+            reader.readAsArrayBuffer(file);
+        });
+
+        async function parseWithAI() {
+            const rawText = document.getElementById('rawInput').value;
+            const mode = document.getElementById('parseMode').value; 
+            if (!rawText.trim()) { showToast("⚠️ 請先上傳檔案或貼上內容！"); return; }
+
+            const btn = document.getElementById('convertBtn');
+            const originText = btn.innerHTML;
+            btn.innerHTML = '<svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white inline-block" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> AI 強制隔離排版中...';
+            btn.disabled = true;
+
+            let systemPromptArr = [
+                "你是特教計畫整理專家。將文字轉化為嚴格的 JSON 陣列格式。",
+                "1. 尋找『第二學期/下學期』等字眼，分為兩個學期放入 semesters 中。預設開頭為第一學期。",
+                "2. ⚠️【表現與內容分類】：必須將表現與內容「嚴格分類」為部定一般領域(regular)與特殊需求(special)。以字串陣列輸出，絕對不要自己加 1. 2. 數字，系統會自動加編號。",
+                "3. week(週次): 保持簡潔(如:1-10)。",
+                "4. ⚠️【單元名稱(name)不可遺漏】：將同一週次內的『所有單元名稱或課名』(如:第一課、第二課) 完整列出在 name 欄位。name 裡面「絕對不能」包含教學內容！",
+                "5. ⚠️【教學重點(contents)必須獨立】：將該單元的教學活動或重點「拆解成陣列」放在 contents 裡面。「絕對不能」把內容塞進單元名稱裡！左邊主題、右邊內容，兩者必須嚴格分開！",
+                "6. ⚠️【定期評量(isExam)】：只有在文字明確寫出「期中評量」、「期末評量」或「測驗」時，isExam 才能設為 true。一般的教學週次(如 1-10週) 絕對是 false！",
+                "7. 同一週次內的所有活動，必須合併成同一筆 unit。"
+            ];
+            
+            let subjectText = "";
+            if (mode === 'math') { 
+                systemPromptArr.push("數學模式：請準確分類【部定數學】(regular)與【特殊需求】(special)。"); 
+                subjectText = "數學"; 
+            } else if (mode === 'mandarin') { 
+                systemPromptArr.push("國語模式：請準確分類【部定國語文】(regular)與【特殊需求】(special)。"); 
+                subjectText = "國語文"; 
+            } else if (mode === 'special') { 
+                systemPromptArr.push("特需模式：所有內容請全部放入 special 陣列中，regular 留空。"); 
+                subjectText = "特殊需求"; 
+            }
+
+            const url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=" + apiKey;
+            const payload = {
+                contents: [{ parts: [{ text: "這是舊版課程計畫的文字：\n\n" + rawText }] }],
+                systemInstruction: { parts: [{ text: systemPromptArr.join("\n") }] },
+                generationConfig: {
+                    responseMimeType: "application/json",
+                    responseSchema: {
+                        type: "OBJECT", properties: {
+                            semesters: { 
+                                type: "ARRAY", items: { 
+                                    type: "OBJECT", properties: { 
+                                        semesterName: { type: "STRING" }, 
+                                        regularPerformances: { type: "ARRAY", items: { type: "STRING" } }, 
+                                        specialPerformances: { type: "ARRAY", items: { type: "STRING" } }, 
+                                        regularContents: { type: "ARRAY", items: { type: "STRING" } }, 
+                                        specialContents: { type: "ARRAY", items: { type: "STRING" } }, 
+                                        units: { 
+                                            type: "ARRAY", items: { 
+                                                type: "OBJECT", properties: { 
+                                                    week: { type: "STRING" }, 
+                                                    name: { type: "STRING" }, 
+                                                    contents: { type: "ARRAY", items: { type: "STRING" } }, 
+                                                    isExam: { type: "BOOLEAN" } 
+                                                } 
+                                            } 
+                                        } 
+                                    } 
+                                } 
+                            }
+                        }
+                    }
+                }
+            };
+
+            let delay = 1000;
+            let result = null;
+            for (let i = 0; i < 5; i++) {
+                try {
+                    const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                    if (!response.ok) throw new Error("HTTP " + response.status);
+                    result = await response.json();
+                    break;
+                } catch (e) {
+                    if (i === 4) {
+                        btn.innerHTML = originText;
+                        btn.disabled = false;
+                        showToast("⚠️ 連線超時，請稍後再試！");
+                        return;
+                    }
+                    await new Promise(function(res) { setTimeout(res, delay); });
+                    delay *= 2;
+                }
+            }
+
+            try {
+                let data = JSON.parse(result.candidates[0].content.parts[0].text);
+                if (!data.semesters || data.semesters.length === 0) data.semesters = [data]; 
+
+                const container = document.getElementById('formsContainer');
+                container.innerHTML = ''; 
+
+                data.semesters.forEach(function(semData, index) {
+                    const clone = document.getElementById('pageTemplate').content.cloneNode(true);
+                    const page = clone.querySelector('.page-container');
+                    
+                    page.querySelector('.page-badge').innerText = "表單頁面 " + (index + 1);
+                    page.querySelector('.docSubject_511').innerText = subjectText;
+                    page.querySelector('.docSubject_521').innerText = subjectText;
+
+                    let sName = semData.semesterName || (index === 0 ? "一" : "二");
+                    if (sName.includes("上") || sName === "1") sName = "一";
+                    if (sName.includes("下") || sName === "2") sName = "二";
+                    page.querySelector('.docSemester').innerText = sName;
+
+                    let buildList = function(regularArr, specialArr) {
+                        let text = "";
+                        if (regularArr && regularArr.length > 0) {
+                            text += (mode !== 'special' ? "【部定領域】\n" : "") + regularArr.map(function(p, i) { return (i+1) + ". " + p; }).join('\n');
+                        }
+                        if (specialArr && specialArr.length > 0) {
+                            if (text) text += "\n--------------------------------------------------\n";
+                            text += (mode !== 'special' ? "【特殊需求】\n" : "") + specialArr.map(function(p, i) { return (i+1) + ". " + p; }).join('\n');
+                        }
+                        return text || "請手動輸入";
+                    };
+
+                    page.querySelector('.docPerf').innerText = buildList(semData.regularPerformances, semData.specialPerformances);
+                    page.querySelector('.docCont').innerText = buildList(semData.regularContents, semData.specialContents);
+                    
+                    const tbody = page.querySelector('.unitRows');
+                    tbody.innerHTML = '';
+                    
+                    if(semData.units && semData.units.length > 0) {
+                        semData.units.forEach(function(u) {
+                            let finalWeek = (u.week || '').trim();
+                            let finalName = (u.name || '').trim();
+                            let finalContents = u.contents || [];
+
+                            if (finalName.toLowerCase() === 'null' || finalName.toLowerCase() === 'none' || finalName === '無') finalName = '';
+                            if (!u.isExam && finalName.length <= 1 && finalContents.length === 0) return;
+
+                            if ((u.isExam || finalName.includes('評量')) && finalContents.length === 0) {
+                                const tr = document.createElement('tr');
+                                tr.innerHTML = '<td class="text-center font-bold text-red-600 align-middle" contenteditable="true">' + (finalWeek || '評量週') + '</td><td colspan="5" contenteditable="true" class="text-center font-bold align-middle">' + (finalName || '定期評量') + '</td>';
+                                tbody.appendChild(tr);
+                            } else {
+                                if (finalName === "" || finalName.length < 2) finalName = "單元重點統整";
+
+                                let contentText = finalContents.length > 0 
+                                    ? finalContents.map(function(c, i) { return (i+1) + ". " + c; }).join('\n')
+                                    : "1. 系統未擷取到重點，請手動輸入教學內容";
+
+                                const tr = document.createElement('tr');
+                                tr.innerHTML = '<td class="text-center align-middle" contenteditable="true">' + finalWeek + '</td><td colspan="2" class="align-top font-bold" contenteditable="true">' + finalName + '</td><td colspan="3" class="align-top whitespace-pre-wrap text-left" contenteditable="true">' + contentText + '</td>';
+                                tbody.appendChild(tr);
+                            }
+                        });
+                    }
+                    
+                    if (index > 0) {
+                        const hr = document.createElement('hr');
+                        hr.className = "border-t-4 border-dashed border-gray-400 w-full my-8 no-print";
+                        container.appendChild(hr);
+                    }
+                    
+                    container.appendChild(page);
+                });
+
+                attachCheckboxes();
+                switchFormTemplate(); 
+                showToast("✨ 轉換成功！已強制建立標題與內容的分隔線！");
+            } catch(err) {
+                showToast("⚠️ 解析發生小錯誤，請檢查網路狀態。");
+            } finally {
+                btn.innerHTML = originText;
+                btn.disabled = false;
+            }
+        }
+    </script>
+</body>
+</html>
